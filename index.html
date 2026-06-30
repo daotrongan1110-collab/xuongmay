@@ -211,9 +211,32 @@ main{padding:13px 14px}
 .empty{text-align:center;padding:28px 16px;color:var(--ink-m);font-size:13px}
 .ei{font-size:28px;margin-bottom:5px}
 .divider{border:none;border-top:1px solid var(--ln-s);margin:11px 0}
+
+/* LOGIN */
+#LOGIN{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
+.login-box{width:100%;max-width:340px;background:var(--bg-e);border:1px solid var(--ln-s);border-radius:var(--rl);padding:28px 24px;box-shadow:var(--shm);text-align:center}
+.login-box .b-name{font-family:var(--fd);font-weight:800;font-size:24px;letter-spacing:-.02em;margin-bottom:2px}
+.login-box .b-tag{font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-m);margin-bottom:20px}
+.login-err{font-size:11.5px;color:var(--dan);background:var(--acc-s);border-radius:var(--rs);padding:7px 10px;margin-bottom:10px;display:none;text-align:left}
+.login-note{font-size:10.5px;color:var(--ink-m);margin-top:14px;line-height:1.5}
 </style>
 </head>
 <body>
+<div id="LOGIN" style="display:none">
+  <div class="login-box">
+    <div class="b-name">Xưởng <em>May</em></div>
+    <div class="b-tag">Đăng nhập để tiếp tục</div>
+    <div class="login-err" id="login_err"></div>
+    <form id="login_form" class="fg fg1">
+      <div class="fld" style="text-align:left">
+        <label>Mật khẩu</label>
+        <input class="inp" id="login_pw" type="password" autocomplete="current-password" required placeholder="Nhập mật khẩu">
+      </div>
+      <button class="btn bp bblk" id="login_btn" type="submit" style="margin-top:4px">Đăng nhập</button>
+    </form>
+    <div class="login-note">Dữ liệu đồng bộ qua Firebase. Mật khẩu do Firebase xác thực phía máy chủ, không lưu sẵn trong mã nguồn trang.</div>
+  </div>
+</div>
 <div class="app" id="APP">
   <header class="hdr" id="HDR">
     <div class="brand">
@@ -230,15 +253,16 @@ main{padding:13px 14px}
       <button id="btn_export" style="font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--bg-s);color:var(--ink-m);border:1px solid var(--ln);cursor:pointer">💾 Backup</button>
       <button id="btn_import" style="font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--bg-s);color:var(--ink-m);border:1px solid var(--ln);cursor:pointer">📂 Restore</button>
       <input type="file" id="imp_file" accept=".json" style="display:none">
+      <span id="sync_dot" title="Trạng thái đồng bộ" style="font-size:10px;color:var(--ink-m);align-self:center;margin-left:2px">●</span>
     </div>
   </header>
   <main id="MAIN"></main>
 </div>
-<div id="TR"></div>
+<div id="TR" style="display:none"></div>
 
-<script>
+<script type="module">
 /* ================================================================
-   STATE & PERSISTENCE
+   STATE & PERSISTENCE (luôn hoạt động kể cả không có mạng)
    ================================================================ */
 const SK='xm_v4';
 const defS=()=>({
@@ -249,7 +273,122 @@ const defS=()=>({
   sales:[],        // {id,items:[{productId,size,quantity}],price,date,note,deleted,deletedAt}
 });
 let S=(()=>{try{const r=localStorage.getItem(SK);if(r)return{...defS(),...JSON.parse(r)}}catch(e){}return defS();})();
-const save=()=>localStorage.setItem(SK,JSON.stringify(S));
+
+let remoteReady=false, applyingRemote=false, saveTimer=null, _fb=null;
+
+const save=(localOnly)=>{
+  localStorage.setItem(SK,JSON.stringify(S));
+  if(localOnly||applyingRemote||!remoteReady||!_fb)return;
+  setSyncDot('•');
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{
+    _fb.setDoc(_fb.DOC_REF,S).then(()=>setSyncDot('✓')).catch(e=>{setSyncDot('!');toast('Lỗi đồng bộ lên máy chủ: '+e.message,true)});
+  },500);
+};
+function setSyncDot(s){const d=document.getElementById('sync_dot');if(d)d.textContent=s;}
+
+function showApp(){
+  document.getElementById('LOGIN').style.display='none';
+  document.getElementById('APP').style.display='';
+  document.getElementById('TR').style.display='';
+}
+function showLogin(msg){
+  document.getElementById('APP').style.display='none';
+  document.getElementById('TR').style.display='none';
+  document.getElementById('LOGIN').style.display='flex';
+  const e=document.getElementById('login_err');
+  if(e){e.textContent=msg||'';e.style.display=msg?'block':'none';}
+}
+
+/* ================================================================
+   FIREBASE: nạp ĐỘNG (dynamic import) trong try/catch.
+   Nếu mạng bị chặn / Firebase lỗi -> app vẫn chạy bình thường ở chế
+   độ chỉ lưu trên máy này (không bị màn hình trắng, không bị khoá).
+   ================================================================ */
+(async()=>{
+  try{
+    const [{initializeApp},{getAuth,signInWithEmailAndPassword,onAuthStateChanged},
+           {getFirestore,doc,getDoc,setDoc,onSnapshot}]=await Promise.all([
+      import("https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js"),
+      import("https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js"),
+    ]);
+    const firebaseConfig={
+      apiKey:"AIzaSyAszc6ZAwF-Hi7FD5jhznGH0MhSRW-QLsc",
+      authDomain:"xuongmay26.firebaseapp.com",
+      projectId:"xuongmay26",
+      storageBucket:"xuongmay26.firebasestorage.app",
+      messagingSenderId:"960736592987",
+      appId:"1:960736592987:web:8e33c78dfd99f8d8fe2b7e"
+    };
+    const fbApp=initializeApp(firebaseConfig);
+    const auth=getAuth(fbApp);
+    const db=getFirestore(fbApp);
+    // Tài khoản đăng nhập cố định (1 user duy nhất). Mật khẩu THẬT (trongan123)
+    // được tạo trong Firebase Console > Authentication, KHÔNG nằm trong file này.
+    const LOGIN_EMAIL='chu.xuong@xuongmay26.firebaseapp.com';
+    const DOC_REF=doc(db,'app_data','main');
+    _fb={setDoc,DOC_REF};
+
+    // Firebase nạp thành công -> bật chế độ yêu cầu đăng nhập
+    showLogin();
+
+    onAuthStateChanged(auth, async(user)=>{
+      if(user){
+        showApp();
+        try{
+          const snap=await getDoc(DOC_REF);
+          if(snap.exists()){
+            applyingRemote=true;
+            S={...defS(),...snap.data()};
+            save(true);
+            applyingRemote=false;
+            render();
+          }else{
+            await setDoc(DOC_REF,S);
+          }
+        }catch(e){toast('Lỗi tải dữ liệu từ máy chủ: '+e.message,true)}
+        remoteReady=true;
+        setSyncDot('✓');
+        onSnapshot(DOC_REF,(snap)=>{
+          if(snap.metadata.hasPendingWrites)return; // bỏ qua tiếng vọng của chính thiết bị này
+          if(!snap.exists())return;
+          applyingRemote=true;
+          S={...defS(),...snap.data()};
+          localStorage.setItem(SK,JSON.stringify(S));
+          applyingRemote=false;
+          render();
+        },(e)=>{toast('Mất kết nối đồng bộ: '+e.message,true)});
+      }else{
+        remoteReady=false;
+        showLogin();
+      }
+    });
+
+    document.getElementById('login_form').addEventListener('submit',async(ev)=>{
+      ev.preventDefault();
+      const pw=document.getElementById('login_pw').value;
+      const btn=document.getElementById('login_btn');
+      btn.disabled=true;btn.textContent='Đang kiểm tra...';
+      try{
+        await signInWithEmailAndPassword(auth,LOGIN_EMAIL,pw);
+        document.getElementById('login_pw').value='';
+      }catch(err){
+        const msg=(err.code==='auth/invalid-credential'||err.code==='auth/wrong-password'||err.code==='auth/user-not-found')
+          ?'Sai mật khẩu.':'Lỗi đăng nhập: '+err.message;
+        showLogin(msg);
+      }
+      btn.disabled=false;btn.textContent='Đăng nhập';
+    });
+  }catch(err){
+    // Không tải được Firebase (chặn mạng, offline, sandbox xem trước...)
+    // -> chạy chế độ chỉ lưu trên máy này, không khoá đăng nhập.
+    console.warn('Firebase không khả dụng, chạy chế độ ngoại tuyến:', err);
+    showApp();
+    document.getElementById('sync_dot').style.display='none';
+    setTimeout(()=>toast('Không kết nối được Firebase — đang chạy ở chế độ chỉ lưu trên máy này',true),300);
+  }
+})();
 
 /* ================================================================
    HELPERS
