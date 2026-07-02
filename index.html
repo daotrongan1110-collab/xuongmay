@@ -180,6 +180,14 @@ main{padding:13px 14px}
 .hi-acts{display:flex;gap:4px;margin-top:7px;justify-content:flex-end}
 .deleted-label{display:inline-flex;align-items:center;gap:4px;background:var(--acc-s);color:var(--dan);font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px}
 
+/* PAGER */
+.pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px;margin:12px 0 4px}
+.pgbtn{min-width:28px;height:28px;padding:0 8px;border-radius:var(--rs);border:1px solid var(--ln);background:var(--bg-e);color:var(--ink-s);font-size:11.5px;font-weight:600;cursor:pointer}
+.pgbtn.on{background:var(--ink);color:var(--bg-e);border-color:var(--ink)}
+.pgbtn:disabled{opacity:.4;cursor:default}
+.pgdots{padding:0 3px;color:var(--ink-m);font-size:11.5px}
+.pg-count{width:100%;text-align:center;font-size:10.5px;color:var(--ink-m);margin-bottom:2px}
+
 /* SIZE PICKER */
 .size-pick-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px}
 .spick{padding:5px 11px;font-size:12px;font-weight:600;border-radius:999px;border:1.5px solid var(--ln);background:var(--bg-s);cursor:pointer;transition:all .15s}
@@ -665,6 +673,29 @@ function rPr(el){
    PAGE: CẮT / MAY / KHO
    ================================================================ */
 let pdF={period:'all',from:'',to:'',productId:'all'};
+const PG_SIZE=12;
+let pgCut=1, pgSwn=1, pgSal=1, pgCs=1;
+
+/* Thanh phân trang dùng chung: page hiện tại (1-based), tổng số trang, callback khi đổi trang */
+function pagerHtml(page,total){
+  if(total<=1)return'';
+  const set=new Set([1,total,page,page-1,page+1]);
+  const nums=[...set].filter(p=>p>=1&&p<=total).sort((a,b)=>a-b);
+  let html=`<div class="pg-count">Trang ${page}/${total}</div><div class="pager">`;
+  html+=`<button class="pgbtn pg-go" data-p="${Math.max(1,page-1)}" ${page<=1?'disabled':''}>‹</button>`;
+  let prev=0;
+  nums.forEach(p=>{
+    if(prev&&p-prev>1)html+=`<span class="pgdots">…</span>`;
+    html+=`<button class="pgbtn pg-go${p===page?' on':''}" data-p="${p}">${p}</button>`;
+    prev=p;
+  });
+  html+=`<button class="pgbtn pg-go" data-p="${Math.min(total,page+1)}" ${page>=total?'disabled':''}>Kế tiếp ›</button>`;
+  html+='</div>';
+  return html;
+}
+function wirePager(el,getSet){
+  el.querySelectorAll('.pg-go').forEach(b=>b.addEventListener('click',()=>{getSet(+b.dataset.p);render()}));
+}
 // Cart state (giỏ tạm)
 let cutCart=[];   // [{productId,size,quantity,date,note}]
 let swnCart=[];   // [{productId,size,quantity,date,priceUnit,note}]
@@ -791,7 +822,10 @@ function rCutHist(el){
   const deleted=S.cutEntries.filter(c=>c.deleted&&inR(c.deletedAt||c.date,fr,to)&&(pdF.productId==='all'||c.productId===pdF.productId));
   const items=[...active,...deleted].sort((a,b)=>b.date>a.date?1:-1);
   if(!items.length){el.innerHTML=`<div class="empty"><div class="ei">✂️</div>Chưa có lô cắt</div>`;return}
-  el.innerHTML=items.map(c=>`<div class="hi${c.deleted?' deleted':''}">
+  const totalPages=Math.max(1,Math.ceil(items.length/PG_SIZE));
+  if(pgCut>totalPages)pgCut=totalPages;
+  const pageItems=items.slice((pgCut-1)*PG_SIZE,pgCut*PG_SIZE);
+  el.innerHTML=pageItems.map(c=>`<div class="hi${c.deleted?' deleted':''}">
     <div class="hi-head">
       <div>
         <div class="hi-name">${esc(gPN(c.productId))} <span class="bdg bb">${esc(c.size)}</span> ${c.deleted?'<span class="deleted-label">🗑 Đã xoá</span>':''}</div>
@@ -802,8 +836,8 @@ function rCutHist(el){
     ${!c.deleted?`<div class="hi-acts">
       <button class="btn bs bxs ec" data-id="${c.id}">✏️ Sửa</button>
       <button class="btn bd bxs dc" data-id="${c.id}">🗑 Xoá</button>
-    </div>`:`<div class="hi-acts"><button class="btn bs bxs undo-c" data-id="${c.id}">↩ Khôi phục</button></div>`}
-  </div>`).join('');
+    </div>`:`<div class="hi-acts"><button class="btn bs bxs undo-c" data-id="${c.id}">↩ Khôi phục</button><button class="btn bd bxs perm-c" data-id="${c.id}">🗑 Xoá hẳn</button></div>`}
+  </div>`).join('')+pagerHtml(pgCut,totalPages);
 
   el.querySelectorAll('.ec').forEach(b=>b.addEventListener('click',()=>{
     const c=S.cutEntries.find(x=>x.id===b.dataset.id);if(!c)return;
@@ -822,6 +856,11 @@ function rCutHist(el){
     const c=S.cutEntries.find(x=>x.id===b.dataset.id);if(!c)return;
     c.deleted=false;if(c._qty!==undefined){c.quantity=c._qty;delete c._qty}delete c.deletedAt;save();render();toast('Đã khôi phục');
   }));
+  el.querySelectorAll('.perm-c').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Xoá HẲN lô cắt này khỏi lịch sử? Không thể khôi phục.'))return;
+    S.cutEntries=S.cutEntries.filter(x=>x.id!==b.dataset.id);save();render();toast('Đã xoá hẳn khỏi lịch sử');
+  }));
+  wirePager(el,p=>pgCut=p);
 }
 
 /* ============ MAY ============ */
@@ -971,7 +1010,10 @@ function rSwnHist(el){
   const deleted=S.sewnEntries.filter(c=>c.deleted&&inR(c.deletedAt||c.date,fr,to)&&(pdF.productId==='all'||c.productId===pdF.productId));
   const items=[...active,...deleted].sort((a,b)=>b.date>a.date?1:-1);
   if(!items.length){el.innerHTML=`<div class="empty"><div class="ei">🧵</div>Chưa có lô may</div>`;return}
-  el.innerHTML=items.map(c=>{
+  const totalPages=Math.max(1,Math.ceil(items.length/PG_SIZE));
+  if(pgSwn>totalPages)pgSwn=totalPages;
+  const pageItems=items.slice((pgSwn-1)*PG_SIZE,pgSwn*PG_SIZE);
+  el.innerHTML=pageItems.map(c=>{
     // FIFO allocations for this sewn entry
     const allocs=computeFIFO(c.productId,c.size).filter(a=>a.sewnId===c.id);
     const allocHtml=allocs.length?`<div class="mt8" style="background:var(--bg-s);border-radius:var(--rs);padding:7px 9px;font-size:11px">
@@ -986,9 +1028,9 @@ function rSwnHist(el){
         <div style="text-align:right"><div class="tg" style="font-size:18px;font-weight:700">${fN(c.deleted&&c._qty!==undefined?c._qty:c.quantity)}</div><div class="mu" style="font-size:10px">sp may</div>${(c.deleted&&c._qty!==undefined?c._qty:c.quantity)&&c.priceUnit?`<div class="tgo" style="font-size:11px;font-weight:600">${fM((c.deleted&&c._qty!==undefined?c._qty:c.quantity)*c.priceUnit)}</div>`:''}</div>
       </div>
       ${allocHtml}
-      ${!c.deleted?`<div class="hi-acts"><button class="btn bs bxs es" data-id="${c.id}">✏️ Sửa</button><button class="btn bd bxs ds" data-id="${c.id}">🗑 Xoá</button></div>`:`<div class="hi-acts"><button class="btn bs bxs undo-s" data-id="${c.id}">↩ Khôi phục</button></div>`}
+      ${!c.deleted?`<div class="hi-acts"><button class="btn bs bxs es" data-id="${c.id}">✏️ Sửa</button><button class="btn bd bxs ds" data-id="${c.id}">🗑 Xoá</button></div>`:`<div class="hi-acts"><button class="btn bs bxs undo-s" data-id="${c.id}">↩ Khôi phục</button><button class="btn bd bxs perm-s" data-id="${c.id}">🗑 Xoá hẳn</button></div>`}
     </div>`;
-  }).join('');
+  }).join('')+pagerHtml(pgSwn,totalPages);
 
   el.querySelectorAll('.es').forEach(b=>b.addEventListener('click',()=>{
     const c=S.sewnEntries.find(x=>x.id===b.dataset.id);if(!c)return;
@@ -1014,6 +1056,11 @@ function rSwnHist(el){
     const c=S.sewnEntries.find(x=>x.id===b.dataset.id);if(!c)return;
     c.deleted=false;if(c._qty!==undefined){c.quantity=c._qty;delete c._qty}delete c.deletedAt;save();render();toast('Đã khôi phục');
   }));
+  el.querySelectorAll('.perm-s').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Xoá HẲN lô may này khỏi lịch sử? Không thể khôi phục.'))return;
+    S.sewnEntries=S.sewnEntries.filter(x=>x.id!==b.dataset.id);save();render();toast('Đã xoá hẳn khỏi lịch sử');
+  }));
+  wirePager(el,p=>pgSwn=p);
 }
 
 /* ============ KHO / XUẤT ============ */
@@ -1130,7 +1177,10 @@ function rSaleHist(el){
   const [fr,to]=gRange(pdF);
   const items=S.sales.filter(s=>inR(s.date,fr,to)||(s.deleted&&inR(s.deletedAt||s.date,fr,to))).slice().sort((a,b)=>b.date>a.date?1:-1);
   if(!items.length){el.innerHTML=`<div class="empty"><div class="ei">📦</div>Chưa có giao dịch xuất hàng</div>`;return}
-  el.innerHTML=items.map(s=>{
+  const totalPages=Math.max(1,Math.ceil(items.length/PG_SIZE));
+  if(pgSal>totalPages)pgSal=totalPages;
+  const pageItems=items.slice((pgSal-1)*PG_SIZE,pgSal*PG_SIZE);
+  el.innerHTML=pageItems.map(s=>{
     const totalQty=(s.items||[]).reduce((a,i)=>a+(i.quantity||0),0);
     const total=totalQty*(s.price||0);
     const itemsHtml=(s.items||[]).map(i=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px solid var(--ln-s)"><span>${esc(gPN(i.productId))} <span class="bdg bgr" style="font-size:9px">${esc(i.size||'')}</span></span><span class="num">${fN(i.quantity)} sp · ${fM(i.quantity*(s.price||0))}</span></div>`).join('');
@@ -1143,9 +1193,9 @@ function rSaleHist(el){
         <div style="text-align:right"><div style="font-size:16px;font-weight:700">${fN(totalQty)} sp</div><div class="tg" style="font-size:12px;font-weight:600">${fM(total)}</div></div>
       </div>
       <div class="mt8" style="background:var(--bg-s);border-radius:var(--rs);padding:7px 9px">${itemsHtml}</div>
-      ${!s.deleted?`<div class="hi-acts"><button class="btn bs bxs esl" data-id="${s.id}">✏️ Sửa</button><button class="btn bd bxs dsl" data-id="${s.id}">🗑 Xoá</button></div>`:`<div class="hi-acts"><button class="btn bs bxs undo-sl" data-id="${s.id}">↩ Khôi phục</button></div>`}
+      ${!s.deleted?`<div class="hi-acts"><button class="btn bs bxs esl" data-id="${s.id}">✏️ Sửa</button><button class="btn bd bxs dsl" data-id="${s.id}">🗑 Xoá</button></div>`:`<div class="hi-acts"><button class="btn bs bxs undo-sl" data-id="${s.id}">↩ Khôi phục</button><button class="btn bd bxs perm-sl" data-id="${s.id}">🗑 Xoá hẳn</button></div>`}
     </div>`;
-  }).join('');
+  }).join('')+pagerHtml(pgSal,totalPages);
   el.querySelectorAll('.esl').forEach(b=>b.addEventListener('click',()=>{
     const s=S.sales.find(x=>x.id===b.dataset.id);if(!s)return;
     openEditModal('Sửa đơn xuất',[
@@ -1163,6 +1213,11 @@ function rSaleHist(el){
     const s=S.sales.find(x=>x.id===b.dataset.id);if(!s)return;
     s.deleted=false;delete s.deletedAt;save();render();toast('Đã khôi phục');
   }));
+  el.querySelectorAll('.perm-sl').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Xoá HẲN đơn xuất này khỏi lịch sử? Không thể khôi phục.'))return;
+    S.sales=S.sales.filter(x=>x.id!==b.dataset.id);save();render();toast('Đã xoá hẳn khỏi lịch sử');
+  }));
+  wirePager(el,p=>pgSal=p);
 }
 
 /* ================================================================
@@ -1334,8 +1389,10 @@ function rCsHist(el){
   const active=filtCs();
   const deletedInPeriod=S.costs.filter(c=>c.deleted&&inR(c.date,fr,to)&&(csF.category==='all'||c.category===csF.category));
   const its=[...active,...deletedInPeriod].sort((a,b)=>b.date>a.date?1:-1);
-  const shown=its.slice(0,100);
-  if(!shown.length){el.innerHTML=`<div class="empty"><div class="ei">💰</div>Chưa có chi phí</div>`;return}
+  if(!its.length){el.innerHTML=`<div class="empty"><div class="ei">💰</div>Chưa có chi phí</div>`;return}
+  const totalPages=Math.max(1,Math.ceil(its.length/PG_SIZE));
+  if(pgCs>totalPages)pgCs=totalPages;
+  const shown=its.slice((pgCs-1)*PG_SIZE,pgCs*PG_SIZE);
   el.innerHTML=`<div class="tw"><table class="tbl"><thead><tr><th>Ngày</th><th>Loại</th><th>Mô tả</th><th>Số tiền</th><th></th></tr></thead><tbody>
   ${shown.map(c=>`<tr${c.deleted?' class="deleted"':''}>
     <td data-l="Ngày">${fD(c.date)}</td>
@@ -1344,9 +1401,9 @@ function rCsHist(el){
     <td data-l="Số tiền" class="cst">${fM(c.amount)}</td>
     <td class="ta">${!c.deleted
       ?`<button class="btn bs bxs ec2" data-id="${c.id}">✏️</button><button class="btn bd bxs dc2" data-id="${c.id}">🗑</button>`
-      :`<button class="btn bs bxs undo2" data-id="${c.id}">↩</button>`}
+      :`<button class="btn bs bxs undo2" data-id="${c.id}">↩</button><button class="btn bd bxs perm2" data-id="${c.id}">🗑 Xoá hẳn</button>`}
     </td>
-  </tr>`).join('')}</tbody></table></div>`;
+  </tr>`).join('')}</tbody></table></div>${pagerHtml(pgCs,totalPages)}`;
   el.querySelectorAll('.ec2').forEach(b=>b.addEventListener('click',()=>{csEdit=S.costs.find(x=>x.id===b.dataset.id);render();window.scrollTo(0,0)}));
   el.querySelectorAll('.dc2').forEach(b=>b.addEventListener('click',()=>{
     if(!confirm('Xoá khoản chi? (vẫn hiện trong lịch sử)'))return;
@@ -1357,6 +1414,11 @@ function rCsHist(el){
     const c=S.costs.find(x=>x.id===b.dataset.id);if(!c)return;
     c.deleted=false;delete c.deletedAt;save();render();toast('Đã khôi phục chi phí');
   }));
+  el.querySelectorAll('.perm2').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Xoá HẲN khoản chi này khỏi lịch sử? Không thể khôi phục.'))return;
+    S.costs=S.costs.filter(x=>x.id!==b.dataset.id);save();render();toast('Đã xoá hẳn khỏi lịch sử');
+  }));
+  wirePager(el,p=>pgCs=p);
 }
 
 /* ================================================================
