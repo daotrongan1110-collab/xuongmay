@@ -146,15 +146,15 @@ main{padding:13px 14px}
 .cchip .cchip-count{font-size:10px;font-weight:700;opacity:.7}
 
 /* COST STATS CHIPS */
-.cs-chips{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:12px}
-@media(min-width:480px){.cs-chips{grid-template-columns:repeat(3,1fr)}}
-@media(min-width:720px){.cs-chips{grid-template-columns:repeat(4,1fr)}}
-.cs-chip{background:var(--bg-e);border:1.5px solid var(--ln-s);border-radius:var(--r);padding:10px 11px;cursor:pointer;transition:all .15s;box-shadow:var(--sh)}
+.cs-chips{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px}
+@media(min-width:480px){.cs-chips{grid-template-columns:repeat(4,1fr)}}
+@media(min-width:720px){.cs-chips{grid-template-columns:repeat(6,1fr)}}
+.cs-chip{background:var(--bg-e);border:1.5px solid var(--ln-s);border-radius:var(--rs);padding:6px 7px;cursor:pointer;transition:all .15s;box-shadow:var(--sh)}
 .cs-chip:hover{border-color:var(--ink-s);box-shadow:var(--shm)}
 .cs-chip.on{border-color:var(--ink);box-shadow:0 0 0 2px rgba(26,26,26,.12)}
-.cs-chip-name{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-m);margin-bottom:3px}
-.cs-chip-val{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--acc)}
-.cs-chip-cnt{font-size:10px;color:var(--ink-m)}
+.cs-chip-name{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-m);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cs-chip-val{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cs-chip-cnt{font-size:9px;color:var(--ink-m);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cs-total{background:var(--ink);border-radius:var(--r);padding:10px 12px;color:var(--bg);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .cs-total-l{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;opacity:.7}
 .cs-total-v{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -198,6 +198,19 @@ main{padding:13px 14px}
 .pw{background:var(--bg-s);border-radius:999px;height:4px;overflow:hidden;margin-top:3px}
 .pb{height:100%;border-radius:999px;background:var(--grn)}
 .pb.bl{background:var(--blu)}
+
+/* COMPACT STAT CARD (mobile-first grid cards, thay cho bảng dài) */
+.cct-list{display:flex;flex-direction:column;gap:6px}
+.cct{background:var(--bg-e);border:1px solid var(--ln-s);border-radius:var(--rs);padding:8px 10px;box-shadow:var(--sh)}
+.cct-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.cct-name{font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:5px;min-width:0}
+.cct-name .tn2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cct-avg{font-size:13px;font-weight:700;white-space:nowrap}
+.cct-mets{display:flex;gap:10px;font-size:10.5px;color:var(--ink-m);flex-wrap:wrap}
+.cct-mets b{color:var(--ink-s)}
+.cct-prog{display:flex;align-items:center;gap:8px;margin-top:5px}
+.cct-prog .pw{flex:1;margin-top:0;height:6px}
+.cct-prog .pct{font-size:11px;font-weight:700;white-space:nowrap;min-width:32px;text-align:right}
 
 /* TOAST */
 #TR{position:fixed;top:13px;left:50%;transform:translateX(-50%);z-index:200;pointer-events:none}
@@ -570,30 +583,32 @@ function rOv(el){
 }
 
 function rTimingTable(el){
-  const keys=[...new Set(S.sewnEntries.filter(c=>!c.deleted).map(c=>c.productId+'|'+(c.size||'')))];
-  if(!keys.length){el.innerHTML=`<div class="empty"><div class="ei">⏱</div>Chưa có dữ liệu may</div>`;return}
-  const rows=keys.map(k=>{
-    const[pid,sz]=k.split('|');
-    const allocs=computeFIFO(pid,sz);
+  const pids=[...new Set(S.sewnEntries.filter(c=>!c.deleted).map(c=>c.productId))];
+  if(!pids.length){el.innerHTML=`<div class="empty"><div class="ei">⏱</div>Chưa có dữ liệu may</div>`;return}
+  const rows=pids.map(pid=>{
+    // Gộp tất cả size của sản phẩm này lại thành 1 thống kê tổng
+    const sizes=[...new Set(S.sewnEntries.filter(c=>!c.deleted&&c.productId===pid).map(c=>c.size||''))];
+    let allocs=[];
+    sizes.forEach(sz=>{allocs=allocs.concat(computeFIFO(pid,sz))});
     const tDays=allocs.reduce((s,a)=>s+a.days*a.qty,0);
     const tQty=allocs.reduce((s,a)=>s+a.qty,0);
     const avg=tQty>0?Math.round(tDays/tQty):null;
     const min=allocs.length?Math.min(...allocs.map(a=>a.days)):null;
     const max=allocs.length?Math.max(...allocs.map(a=>a.days)):null;
-    return{pid,sz,avg,min,max,tQty};
+    return{pid,avg,min,max,tQty};
   }).sort((a,b)=>(b.avg||0)-(a.avg||0));
 
-  el.innerHTML=`<div class="tw"><table class="tbl">
-    <thead><tr><th>Sản phẩm</th><th>Size</th><th>Đã may (sp)</th><th>Nhanh nhất</th><th>Chậm nhất</th><th>TB (ngày)</th></tr></thead>
-    <tbody>${rows.map(r=>`<tr>
-      <td data-l="Sản phẩm" class="tn">${esc(gPN(r.pid))}</td>
-      <td data-l="Size">${r.sz?`<span class="bdg bgr">${esc(r.sz)}</span>`:'—'}</td>
-      <td data-l="Đã may" class="num">${fN(r.tQty)}</td>
-      <td data-l="Nhanh nhất" class="num tg">${r.min!==null?r.min+' ngày':'—'}</td>
-      <td data-l="Chậm nhất" class="num ${r.max>14?'tr':''}">${r.max!==null?r.max+' ngày':'—'}</td>
-      <td data-l="TB"><strong>${r.avg!==null?r.avg+' ngày':'—'}</strong></td>
-    </tr>`).join('')}</tbody>
-  </table></div>`;
+  el.innerHTML=`<div class="cct-list">${rows.map(r=>`<div class="cct">
+    <div class="cct-top">
+      <div class="cct-name"><span class="tn2">${esc(gPN(r.pid))}</span></div>
+      <div class="cct-avg">${r.avg!==null?r.avg+' ngày TB':'—'}</div>
+    </div>
+    <div class="cct-mets">
+      <span>Đã may: <b>${fN(r.tQty)}</b></span>
+      <span>Nhanh nhất: <b class="tg">${r.min!==null?r.min+' ngày':'—'}</b></span>
+      <span>Chậm nhất: <b class="${r.max>14?'tr':''}">${r.max!==null?r.max+' ngày':'—'}</b></span>
+    </div>
+  </div>`).join('')}</div>`;
 }
 
 /* ================================================================
@@ -714,7 +729,7 @@ ${cutCart.length?`<div class="cart">
 </div>`:''}
 <div class="sec"><div class="sh"><div class="st2">Lịch sử lô cắt</div></div><div id="CT_FLT"></div><div id="CT_LST"></div></div>`;
 
-  let selPid='', selSizes=[];
+  let selPid='', selSizes=[], szQty={};
   const pk=el.querySelector('#ct_pk'), rw=el.querySelector('#ct_rw');
 
   const refreshPicker=()=>{
@@ -723,11 +738,12 @@ ${cutCart.length?`<div class="cart">
       if(selSizes.includes(s))selSizes=selSizes.filter(x=>x!==s);else selSizes.push(s);
       refreshPicker();
     });
-    rw.innerHTML=selSizes.map((s,i)=>`<div class="sr-row"><span class="sr-lbl">${esc(s)}</span><input class="inp" type="number" min="0" placeholder="Số lượng" data-s="${esc(s)}" id="ct_q_${i}"><div></div><button class="btn bd bxs rm-s" data-s="${esc(s)}">×</button></div>`).join('');
-    rw.querySelectorAll('.rm-s').forEach(b=>b.addEventListener('click',()=>{selSizes=selSizes.filter(x=>x!==b.dataset.s);refreshPicker()}));
+    rw.innerHTML=selSizes.map((s,i)=>`<div class="sr-row"><span class="sr-lbl">${esc(s)}</span><input class="inp" type="number" min="0" placeholder="Số lượng" data-s="${esc(s)}" id="ct_q_${i}" value="${esc(szQty[s]||'')}"><div></div><button class="btn bd bxs rm-s" data-s="${esc(s)}">×</button></div>`).join('');
+    rw.querySelectorAll('input[data-s]').forEach(inp=>inp.addEventListener('input',e=>{szQty[e.target.dataset.s]=e.target.value}));
+    rw.querySelectorAll('.rm-s').forEach(b=>b.addEventListener('click',()=>{delete szQty[b.dataset.s];selSizes=selSizes.filter(x=>x!==b.dataset.s);refreshPicker()}));
   };
 
-  el.querySelector('#ct_sp').addEventListener('change',e=>{selPid=e.target.value;selSizes=[];refreshPicker()});
+  el.querySelector('#ct_sp').addEventListener('change',e=>{selPid=e.target.value;selSizes=[];szQty={};refreshPicker()});
   el.querySelector('#ct_dt').addEventListener('change',e=>cutDate=e.target.value);
   el.querySelector('#ct_nt').addEventListener('input',e=>cutNote=e.target.value);
 
@@ -741,7 +757,7 @@ ${cutCart.length?`<div class="cart">
       if(existC)existC.quantity+=qty;else cutCart.push({productId:selPid,size:s,quantity:qty,date:cutDate,note:cutNote});added++}
     }
     if(!added){toast('Nhập số lượng ít nhất 1 size',true);return}
-    selSizes=[];el.querySelector('#ct_sp').value='';selPid='';refreshPicker();render();
+    selSizes=[];szQty={};el.querySelector('#ct_sp').value='';selPid='';refreshPicker();render();
   });
 
   // Cart display
@@ -813,12 +829,14 @@ function rSwn(el){
   el.innerHTML=`
 <div class="iform sec">
   <div class="iform-t">🧵 Nhập lô may mới</div>
-  <div class="fg fg3" style="gap:9px">
+  <div class="fg fg2" style="gap:9px">
     <div class="fld"><label>Sản phẩm *</label><select class="sel" id="sw_sp"><option value="">-- Chọn SP --</option>${S.products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
     <div class="fld"><label>Ngày hoàn thành</label><input class="inp" type="date" id="sw_dt" value="${swnDate}"></div>
-    <div class="fld"><label>Giá dự kiến/SP (đ)</label><input class="inp" type="number" id="sw_pr" placeholder="0" value="${esc(swnPriceUnit)}"></div>
   </div>
-  <div class="fld mt8"><label>Ghi chú</label><input class="inp" id="sw_nt" placeholder="Tuỳ chọn" value="${esc(swnNote)}"></div>
+  <div class="fg fg2 mt8" style="gap:9px">
+    <div class="fld"><label>Giá dự kiến/SP (đ)</label><input class="inp" type="number" id="sw_pr" placeholder="0" value="${esc(swnPriceUnit)}"></div>
+    <div class="fld"><label>Ghi chú</label><input class="inp" id="sw_nt" placeholder="Tuỳ chọn" value="${esc(swnNote)}"></div>
+  </div>
   <div class="fld mt8"><label>Chọn size</label><div id="sw_pk" class="mt8"></div></div>
   <div id="sw_rw" class="mt8"></div>
   <button class="btn bs bsm mt8" id="sw_add">+ Thêm vào danh sách</button>
@@ -834,7 +852,7 @@ ${swnCart.length?`<div class="cart">
 
 <div class="sec"><div class="sh"><div class="st2">Lịch sử lô may</div></div><div id="SW_FLT"></div><div id="SW_LST"></div></div>`;
 
-  let selPid='', selSizes=[];
+  let selPid='', selSizes=[], szQty={};
   const pk=el.querySelector('#sw_pk'), rw=el.querySelector('#sw_rw');
 
   const refreshPicker=()=>{
@@ -843,16 +861,16 @@ ${swnCart.length?`<div class="cart">
       if(selSizes.includes(s))selSizes=selSizes.filter(x=>x!==s);else selSizes.push(s);
       refreshPicker();
     });
-    const date=el.querySelector('#sw_dt').value||now();
     rw.innerHTML=selSizes.map((s,i)=>{
       const avail=getCutRemaining(selPid,s);
-      return`<div class="sr-row"><span class="sr-lbl">${esc(s)}</span><input class="inp" type="number" min="0" max="${avail}" placeholder="Max: ${avail}" data-s="${esc(s)}" id="sw_q_${i}"><span class="sr-avail">Còn cắt: <b>${fN(avail)}</b></span><button class="btn bd bxs rm-s" data-s="${esc(s)}">×</button></div>`;
+      return`<div class="sr-row"><span class="sr-lbl">${esc(s)}</span><input class="inp" type="number" min="0" max="${avail}" placeholder="Max: ${avail}" data-s="${esc(s)}" id="sw_q_${i}" value="${esc(szQty[s]||'')}"><span class="sr-avail">Còn cắt: <b>${fN(avail)}</b></span><button class="btn bd bxs rm-s" data-s="${esc(s)}">×</button></div>`;
     }).join('');
-    rw.querySelectorAll('.rm-s').forEach(b=>b.addEventListener('click',()=>{selSizes=selSizes.filter(x=>x!==b.dataset.s);refreshPicker()}));
+    rw.querySelectorAll('input[data-s]').forEach(inp=>inp.addEventListener('input',e=>{szQty[e.target.dataset.s]=e.target.value}));
+    rw.querySelectorAll('.rm-s').forEach(b=>b.addEventListener('click',()=>{delete szQty[b.dataset.s];selSizes=selSizes.filter(x=>x!==b.dataset.s);refreshPicker()}));
   };
 
   el.querySelector('#sw_sp').addEventListener('change',e=>{
-    selPid=e.target.value;selSizes=[];
+    selPid=e.target.value;selSizes=[];szQty={};
     const p=gP(selPid);if(p?.priceExpected&&!swnPriceUnit){el.querySelector('#sw_pr').value=p.priceExpected;swnPriceUnit=String(p.priceExpected)}
     refreshPicker();
   });
@@ -877,7 +895,7 @@ ${swnCart.length?`<div class="cart">
     }
     if(blocked)return;
     if(!added){toast('Nhập số lượng ít nhất 1 size',true);return}
-    selSizes=[];el.querySelector('#sw_sp').value='';selPid='';refreshPicker();render();
+    selSizes=[];szQty={};el.querySelector('#sw_sp').value='';selPid='';refreshPicker();render();
   });
 
   if(swnCart.length){
@@ -926,10 +944,25 @@ function rCvMTable(el){
   S.sales.filter(s=>!s.deleted).forEach(sl=>(sl.items||[]).forEach(i=>{const k=i.productId+'|'+(i.size||'');if(mp[k])mp[k].sold+=i.quantity||0}));
   const rows=Object.values(mp);
   if(!rows.length){el.innerHTML=`<div class="empty"><div class="ei">📊</div>Chưa có dữ liệu</div>`;return}
-  el.innerHTML=`<div class="tw"><table class="tbl"><thead><tr><th>Sản phẩm</th><th>Size</th><th>Đã cắt</th><th>Đã may</th><th>Chưa may</th><th>Đã xuất</th><th>Còn tồn</th><th>Tiến độ</th></tr></thead><tbody>
-  ${rows.map(r=>{const rem=r.cut-r.swn,stk=r.swn-r.sold,pct=r.cut?Math.round(r.swn/r.cut*100):0;
-    return`<tr><td data-l="SP" class="tn">${esc(gPN(r.pid))}</td><td data-l="Size">${r.sz?`<span class="bdg bgr">${esc(r.sz)}</span>`:'—'}</td><td data-l="Đã cắt" class="num tb">${fN(r.cut)}</td><td data-l="Đã may" class="num tg">${fN(r.swn)}</td><td data-l="Chưa may" class="num ${rem>0?'tgo':''}">${fN(rem)}</td><td data-l="Đã xuất" class="num">${fN(r.sold)}</td><td data-l="Tồn" class="num ${stk<0?'tr':''}">${fN(Math.max(0,stk))}</td><td data-l="Tiến độ"><span style="font-size:11px;font-weight:600">${pct}%</span><div class="pw" style="width:50px"><div class="pb" style="width:${Math.min(pct,100)}%"></div></div></td></tr>`;
-  }).join('')}</tbody></table></div>`;
+  el.innerHTML=`<div class="cct-list">${rows.map(r=>{
+    const rem=r.cut-r.swn,stk=r.swn-r.sold,pct=r.cut?Math.round(r.swn/r.cut*100):0;
+    return`<div class="cct">
+      <div class="cct-top">
+        <div class="cct-name"><span class="tn2">${esc(gPN(r.pid))}</span>${r.sz?`<span class="bdg bgr">${esc(r.sz)}</span>`:''}</div>
+        <div class="cct-avg ${stk<0?'tr':''}">Tồn: ${fN(Math.max(0,stk))}</div>
+      </div>
+      <div class="cct-mets">
+        <span>Cắt: <b class="tb">${fN(r.cut)}</b></span>
+        <span>May: <b class="tg">${fN(r.swn)}</b></span>
+        <span>Chưa may: <b class="${rem>0?'tgo':''}">${fN(rem)}</b></span>
+        <span>Xuất: <b>${fN(r.sold)}</b></span>
+      </div>
+      <div class="cct-prog">
+        <div class="pw"><div class="pb" style="width:${Math.min(pct,100)}%"></div></div>
+        <span class="pct">${pct}%</span>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 function rSwnHist(el){
@@ -1017,7 +1050,7 @@ ${salCart.length?`<div class="cart">
 <div class="sec"><div class="sh"><div class="st2">Tồn kho theo SP & Size</div></div><div id="INV_TBL"></div></div>
 <div class="sec"><div class="sh"><div class="st2">Lịch sử xuất hàng</div></div><div id="SL_FLT"></div><div id="SL_LST"></div></div>`;
 
-  let selPid='', selSizes=[];
+  let selPid='', selSizes=[], szQty={};
   const pk=el.querySelector('#sl_pk'), rw=el.querySelector('#sl_rw');
 
   const refreshPicker=()=>{
@@ -1031,13 +1064,14 @@ ${salCart.length?`<div class="cart">
     pk.querySelectorAll('.spick').forEach(b=>b.addEventListener('click',()=>{const s=b.dataset.s;if(selSizes.includes(s))selSizes=selSizes.filter(x=>x!==s);else selSizes.push(s);refreshPicker()}));
     rw.innerHTML=selSizes.map((s,i)=>{
       const stk=getStock(selPid,s);
-      return`<div class="sr-row"><span class="sr-lbl">${esc(s)}</span><input class="inp" type="number" min="0" placeholder="Max: ${stk}" data-s="${esc(s)}" id="sl_q_${i}"><span class="sr-avail ${stk<=0?'tr':''}">Tồn: <b>${fN(stk)}</b></span><button class="btn bd bxs rm-s" data-s="${esc(s)}">×</button></div>`;
+      return`<div class="sr-row"><span class="sr-lbl">${esc(s)}</span><input class="inp" type="number" min="0" placeholder="Max: ${stk}" data-s="${esc(s)}" id="sl_q_${i}" value="${esc(szQty[s]||'')}"><span class="sr-avail ${stk<=0?'tr':''}">Tồn: <b>${fN(stk)}</b></span><button class="btn bd bxs rm-s" data-s="${esc(s)}">×</button></div>`;
     }).join('');
-    rw.querySelectorAll('.rm-s').forEach(b=>b.addEventListener('click',()=>{selSizes=selSizes.filter(x=>x!==b.dataset.s);refreshPicker()}));
+    rw.querySelectorAll('input[data-s]').forEach(inp=>inp.addEventListener('input',e=>{szQty[e.target.dataset.s]=e.target.value}));
+    rw.querySelectorAll('.rm-s').forEach(b=>b.addEventListener('click',()=>{delete szQty[b.dataset.s];selSizes=selSizes.filter(x=>x!==b.dataset.s);refreshPicker()}));
   };
 
   el.querySelector('#sl_sp').addEventListener('change',e=>{
-    selPid=e.target.value;selSizes=[];
+    selPid=e.target.value;selSizes=[];szQty={};
     const p=gP(selPid);if(p?.priceExpected&&!salPrice){el.querySelector('#sl_pr').value=p.priceExpected;salPrice=String(p.priceExpected)}
     refreshPicker();
   });
@@ -1059,7 +1093,7 @@ ${salCart.length?`<div class="cart">
       added++;
     }
     if(!added){toast('Nhập số lượng ít nhất 1 size',true);return}
-    selSizes=[];el.querySelector('#sl_sp').value='';selPid='';refreshPicker();render();
+    selSizes=[];szQty={};el.querySelector('#sl_sp').value='';selPid='';refreshPicker();render();
   });
 
   if(salCart.length){
@@ -1191,14 +1225,16 @@ function rCsRows(el){
   const rw=el.querySelector('#CS_ROWS');if(!rw)return;
   if(csEdit){
     const c=csEdit;
-    rw.innerHTML=`<div class="fg fg4" style="gap:9px">
+    rw.innerHTML=`<div class="fg fg1" style="gap:9px">
       <div class="fld"><label>Loại *</label>
         <div class="cat-chips" style="margin:5px 0">${CCATS.map((cat,i)=>`<button class="cchip${c.category===cat?' on':''} cc-sel" data-c="${esc(cat)}" style="${c.category===cat?`background:${CCOL[i]};color:#fff;border-color:${CCOL[i]}`:''}">${esc(cat)}</button>`).join('')}</div>
         <input type="hidden" id="ce_cat" value="${esc(c.category)}">
       </div>
-      <div class="fld"><label>Ngày</label><input class="inp" type="date" id="ce_dt" value="${c.date}"></div>
-      <div class="fld" style="grid-column:1/-1"><label>Mô tả</label><input class="inp" id="ce_ds" placeholder="Chi tiết..." value="${esc(c.description||'')}"></div>
-      <div class="fld"><label>Số tiền (đ) *</label><input class="inp" type="number" id="ce_am" placeholder="0" value="${c.amount}"></div>
+      <div class="fg fg2" style="gap:9px">
+        <div class="fld"><label>Ngày</label><input class="inp" type="date" id="ce_dt" value="${c.date}"></div>
+        <div class="fld"><label>Số tiền (đ) *</label><input class="inp" type="number" id="ce_am" placeholder="0" value="${c.amount}"></div>
+      </div>
+      <div class="fld"><label>Mô tả</label><input class="inp" id="ce_ds" placeholder="Chi tiết..." value="${esc(c.description||'')}"></div>
     </div>`;
     rw.querySelectorAll('.cc-sel').forEach((b,bi)=>b.addEventListener('click',()=>{
       rw.querySelectorAll('.cc-sel').forEach((x,xi)=>{x.className='cchip cc-sel';x.style.cssText=''});
@@ -1209,14 +1245,16 @@ function rCsRows(el){
   }
   rw.innerHTML=csRows.map((r,i)=>`<div style="${i>0?'border-top:1px solid var(--ln-s);padding-top:11px;margin-top:11px':''}">
     ${csRows.length>1?`<div style="display:flex;justify-content:flex-end;margin-bottom:5px"><button class="btn bd bxs rm-cr" data-i="${i}">× Xoá dòng</button></div>`:''}
-    <div class="fg fg4" style="gap:9px">
+    <div class="fg fg1" style="gap:9px">
       <div class="fld"><label>Loại *</label>
         <div class="cat-chips" style="margin:5px 0">${CCATS.map((cat,ci)=>`<button class="cchip${r.category===cat?' on':''} cr-cat" data-i="${i}" data-c="${esc(cat)}" style="${r.category===cat?`background:${CCOL[ci]};color:#fff;border-color:${CCOL[ci]}`:''}">${esc(cat)}</button>`).join('')}</div>
         <input type="hidden" class="cr-cat-val" data-i="${i}" value="${esc(r.category)}">
       </div>
-      <div class="fld"><label>Ngày</label><input class="inp cr-dt" type="date" data-i="${i}" value="${r.date}"></div>
-      <div class="fld" style="grid-column:1/-1"><label>Mô tả</label><input class="inp cr-ds" type="text" data-i="${i}" placeholder="Mô tả chi tiết..." value="${esc(r.description)}"></div>
-      <div class="fld"><label>Số tiền (đ) *</label><input class="inp cr-am" type="number" data-i="${i}" placeholder="0" value="${r.amount}"></div>
+      <div class="fg fg2" style="gap:9px">
+        <div class="fld"><label>Ngày</label><input class="inp cr-dt" type="date" data-i="${i}" value="${r.date}"></div>
+        <div class="fld"><label>Số tiền (đ) *</label><input class="inp cr-am" type="number" data-i="${i}" placeholder="0" value="${r.amount}"></div>
+      </div>
+      <div class="fld"><label>Mô tả</label><input class="inp cr-ds" type="text" data-i="${i}" placeholder="Mô tả chi tiết..." value="${esc(r.description)}"></div>
     </div>
   </div>`).join('');
   rw.querySelectorAll('.cr-cat').forEach(b=>b.addEventListener('click',()=>{
